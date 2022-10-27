@@ -3,13 +3,13 @@ use clap::Parser;
 #[derive(clap::ValueEnum, Copy, Clone, Debug)]
 pub enum RunModel {
     Serial,
-    Parallel
+    Parallel,
 }
 
 #[derive(clap::ValueEnum, Copy, Clone, Debug)]
 pub enum TargetProblem {
     CountOnes,
-    Hiff
+    Hiff,
 }
 
 /// Simple genetic algorithm in Rust

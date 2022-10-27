@@ -6,13 +6,33 @@ edition = "2021"
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
-clap = { version = "3.2.22", features = ["derive"] }
+clap = { version = "4.0.10", features = ["derive"] }
+itertools = "0.10.5"
 rand = { version = "0.8.5", features = ["alloc"] }
 rayon = "1.5.3"
 
 [dev-dependencies]
-criterion = "0.3"
+criterion = "0.4.0"
+
+[profile.release]
+debug = true
 
 [[bench]]
 name = "construction_benchmark"
+harness = false
+
+[[bench]]
+name = "hiff_benchmark"
+harness = false
+
+[[bench]]
+name = "run_benchmarks"
+harness = false
+
+[[bench]]
+name = "lexicase_benchmarks"
+harness = false
+
+[[bench]]
+name = "lexicase_simple"
 harness = false

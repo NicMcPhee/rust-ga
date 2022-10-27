@@ -12,46 +12,22 @@ works well, but if there get to be a lot of them moving to GitHub
 Issues might make more sense.
 
 - [Issues to address](#issues-to-address)
-  - [Use `clap` to support command-line args for parameters](#use-clap-to-support-command-line-args-for-parameters)
   - [Implement lexicase selection](#implement-lexicase-selection)
   - [Replace `Individual` with traits?](#replace-individual-with-traits)
   - [Create mutation/recombination pipeline](#create-mutationrecombination-pipeline)
-  - [Supported weighted parent selection](#supported-weighted-parent-selection)
   - [Move `scorer` inside `Generation`?](#move-scorer-inside-generation)
+  - [Use `clap` to support command-line args for parameters](#use-clap-to-support-command-line-args-for-parameters)
 - [Wednesday, 21 Sep 2022 (7-9pm)](#wednesday-21-sep-2022-7-9pm)
   - [What actually happened](#what-actually-happened)
 - [Wednesday, 28 Sep 2022 (7-9pm)](#wednesday-28-sep-2022-7-9pm)
+  - [What actually happened](#what-actually-happened-1)
+- [Wednesday, 5 October 2022 (7-9pm)](#wednesday-5-october-2022-7-9pm)
+  - [What actually happened](#what-actually-happened-2)
 
 ## Issues to address
 
 Below are some things that we could/should deal with, in no
 particular order.
-
-### Use `clap` to support command-line args for parameters
-
-> 25 Sep 2022: I've added support for most of this. The one thing
-> I don't have any command line support for yet is the selectors
-> and the mutation/recombination pipelines.
-
-Using `clap` in [the Rust echo client-server](https://github.com/NicMcPhee/rust-echo-client-server)
-was really easy, and worked quite nicely. We should add `clap`
-support for the various parameters that we might want to
-vary via the command line. At the moment that would include:
-
-- Population size
-- Length of bitstrings
-- Selectors
-- Mutation/recombination tools
-- Target problem
-
-Some of these may depend on others. The length of bitstrings
-makes sense here because that's the only genome we're using, but
-if we add other genomes (like tree-based GP or Push) then that
-won't make any sense.
-
-I'm not sure, but it seems possible that this kind of
-interdependence may create type problems for us in Rust. Maybe
-traits would be the way to address this?
 
 ### Implement lexicase selection
 
@@ -105,12 +81,6 @@ The addition of a closure that captures most of this pipeline
 in the construction of a `Generation` type may essentially
 resolve this issue, or at least suggests a way to approach it.
 
-### Supported weighted parent selection
-
-We should extend `PopulationSelector` to a `WeightedParentSelector` that
-is essentially a wrapper around `rand::distributions::WeightedChoice`
-so we can provide weights on the different selectors.
-
 ### Move `scorer` inside `Generation`?
 
 Should the `scorer` be inside the generation so we don't have to
@@ -119,6 +89,32 @@ keep capturing it and passing it around?
 Or should there actually be a `Run` type (or a `RunParams` type)
 that holds all this stuff and is used to make them available to
 types like `Generation` and `Population`?
+
+### Use `clap` to support command-line args for parameters
+
+> 25 Sep 2022: I've added support for most of this. The one thing
+> I don't have any command line support for yet is the selectors
+> and the mutation/recombination pipelines.
+
+Using `clap` in [the Rust echo client-server](https://github.com/NicMcPhee/rust-echo-client-server)
+was really easy, and worked quite nicely. We should add `clap`
+support for the various parameters that we might want to
+vary via the command line. At the moment that would include:
+
+- Population size
+- Length of bitstrings
+- Selectors
+- Mutation/recombination tools
+- Target problem
+
+Some of these may depend on others. The length of bitstrings
+makes sense here because that's the only genome we're using, but
+if we add other genomes (like tree-based GP or Push) then that
+won't make any sense.
+
+I'm not sure, but it seems possible that this kind of
+interdependence may create type problems for us in Rust. Maybe
+traits would be the way to address this?
 
 ## Wednesday, 21 Sep 2022 (7-9pm)
 
@@ -173,3 +169,41 @@ Things to work on this week:
 - Implement Lexicase Selection.
 - If that get done quickly, then we can look at the problem of
   pipelining mutation and recombination operators.
+
+### What actually happened
+
+We got weighted selecting working nicely, using `SliceRandom::choose_weighted`
+(as suggested by `esitsu@Twitch`). This (and some reasonable weights) seemed
+to have substantially improved the performance of the system on both the
+test problems.
+
+`esitsu` also suggested having `Individual<Bitstring>` implement the `Display`
+trait so we could print genomes out as 0s and 1s instead of `true`s and `false`s.
+This really improved the readability of the output.
+
+We then started the process of implementing lexicase selection. We started
+by storing vectors of scores in individuals, which bled across the code base
+quite a lot. I could have used generics to make that less of a problem in the
+future, but I wanted to try to wrap this up so we could get to the proper
+performance comparison with Clojure.
+
+## Wednesday, 5 October 2022 (7-9pm)
+
+The goal tonight was to implement lexicase selection!
+
+### What actually happened
+
+I spent a little time at the start going over my various implementations
+of `hiff`, and then we implemented lexicase selection.
+
+Except that it turned out to be _really_ slow. I'd had what I thought was
+a clever idea using iterators, but that biffed because of type issues.
+(Rust filter iterators essentially include the test closure in the type, so
+you can't just substitute one for another.)
+
+So we ended up doing everything with vectors, and the flamegraphs suggest
+that we're spending a ton of time creating vectors and allocating memory.
+Sighz.
+
+I'll really need to think about this more, because we really want to do
+better. Maybe a custom made iterator?
