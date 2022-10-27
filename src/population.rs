@@ -3,7 +3,7 @@
 #![warn(clippy::unwrap_used)]
 #![warn(clippy::expect_used)]
 
-use std::{borrow::Borrow, mem::swap};
+use std::{borrow::Borrow, mem::swap, cmp::Ordering};
 use itertools::Itertools;
 use rand::seq::SliceRandom;
 
@@ -112,36 +112,48 @@ impl<T> Population<T> {
         //     is worse than that best score on that test case.
         // Go until you get to a single individual or you run
         // out of test cases.
-
+    
         // TODO: Compute these bits once when the population is initially constructed
         //   and then just look it up when necessary instead of recomputing it
         //   for every selection.
-        let first_individual = &self.individuals[0];
-        let first_scores = &first_individual.scores;
-        let num_scores = first_scores.len();
-        let mut case_indices: Vec<usize> = (0..num_scores).collect();
-
-        case_indices.shuffle(&mut rand::thread_rng());
-
-        let mut candidates: Vec<&Individual<T>> = self.individuals
-            .iter()
-            .collect();
-
-        for test_case_index in case_indices {
-            assert!(!candidates.is_empty(), "The set of lexicase candidates shouldn't be empty");
-            if candidates.len() == 1 {
-                break;
-            }
-            let max_score = candidates.iter().max_by_key(|ind| {
-                ind.scores[test_case_index]
-            }).unwrap().scores[test_case_index];
-            candidates = candidates.into_iter().filter(|ind| {
-                ind.scores[test_case_index] == max_score
-            }).collect();
+    
+        // Get the number of scores from the first individual.
+        let num_scores = match self.individuals.first() {
+            Some(ind) => ind.scores.len(),
+            None => return None,
+        };
+    
+        // The case indices are the number of scores in a random order.
+        let mut case_indices = (0..num_scores).collect::<Vec<_>>();
+    
+        let mut rng = rand::thread_rng();
+        case_indices.shuffle(&mut rng);
+    
+        let mut candidates = self.individuals.iter().collect::<Vec<_>>();
+    
+        // Run until there is exactly one candidate.
+        while candidates.len() > 1 {
+            let idx = match case_indices.pop() {
+                Some(i) => i,
+                None => break,
+            };
+    
+            let mut best_score = 0;
+            candidates.retain(|ind| {
+                let score = ind.scores[idx];
+                match score.cmp(&best_score) {
+                    Ordering::Greater => {
+                        best_score = score;
+                        true
+                    }
+                    Ordering::Equal => true,
+                    Ordering::Less => false,
+                }
+            });
         }
-
-        candidates.shuffle(&mut rand::thread_rng());
-        Some(candidates[0])
+    
+        candidates.shuffle(&mut rng);
+        Some(&candidates[0])
     }
 
     pub fn lexicase_with_dup_removal(&self) -> Option<&Individual<T>> {

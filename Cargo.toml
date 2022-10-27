@@ -32,3 +32,7 @@ harness = false
 [[bench]]
 name = "lexicase_benchmarks"
 harness = false
+
+[[bench]]
+name = "lexicase_simple"
+harness = false
