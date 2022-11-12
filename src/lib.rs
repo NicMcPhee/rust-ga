@@ -31,11 +31,14 @@ pub fn do_main(args: Args) {
 
     // Use lexicase selection almost exclusively, but typically carry forward
     // at least one copy of the best individual (as measured by total fitness).
-    let weighted_selectors: Vec<WeightedSelector<Bitstring, TestResults<Error>>> =
-        vec![
-                (&Population::best_individual, 1),
-                (&Population::lexicase, args.population_size-1)
-            ];
+    // let weighted_selectors = // : Vec<WeightedSelector<Bitstring, TestResults<Error>>> =
+    //     vec![
+    //             // (&Population::best_individual, 1),
+    //             (&Population::lexicase, args.population_size-1)
+    //         ];
+
+    // pub type Selector<G, R> = dyn for<'a> Fn(&Population<'a, G, R>) -> &'a Individual<G, R> + Sync + Send;
+    // let selector: & dyn for<'r, 'a> Fn(&Population<'a, Bitstring, TestResults<individual::Error>>) -> &'a Individual<Bitstring, TestResults<individual::Error>> = &Population::lexicase;
 
     let population
         = Population::new_bitstring_population(
@@ -59,7 +62,8 @@ pub fn do_main(args: Args) {
 
     let mut generation = Generation::new(
         population,
-        &weighted_selectors,
+        // &Population::lexicase,
+        // &weighted_selectors,
         &make_child
     );
 

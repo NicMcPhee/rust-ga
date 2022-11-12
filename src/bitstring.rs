@@ -185,7 +185,7 @@ impl<R: Debug> Display for Individual<Bitstring, R> {
     }
 }
 
-impl<R: Send> Population<Bitstring, R> {
+impl<'a, R: Send> Population<'a, Bitstring, R> {
     pub fn new_bitstring_population<H>(
         pop_size: usize, 
         bit_length: usize, 

@@ -1,10 +1,10 @@
 use rand::{rngs::ThreadRng, seq::SliceRandom};
 use rayon::prelude::{IntoParallelIterator, ParallelIterator};
 
-use crate::{population::{Population}, individual::Individual};
+use crate::{population::{Population, compute_lexicase_sortings}, individual::{Individual, TestResults}};
 
-pub type Selector<G, R> = dyn Fn(&Population<G, R>) -> &Individual<G, R> + Sync + Send;
-pub type WeightedSelector<'a, G, R> = (&'a Selector<G, R>, usize);
+pub type Selector<G, R> = dyn for<'a> Fn(&Population<'a, G, R>) -> &'a Individual<G, R> + Sync + Send;
+pub type WeightedSelector<G, R> = (&'static Selector<G, R>, usize);
 pub type ChildMaker<G, R> = dyn Fn(&mut ThreadRng, &Generation<G, R>) -> Individual<G, R> + Send + Sync;
 
 // TODO: Extend the vector of Selectors to a WeightedParentSelector that is essentially
@@ -15,9 +15,10 @@ pub type ChildMaker<G, R> = dyn Fn(&mut ThreadRng, &Generation<G, R>) -> Individ
 // TODO: Should there actually be a `Run` type (or a `RunParams` type) that
 //   holds all this stuff and is used to make them available to types like
 //   `Generation` and `Population`?
-pub struct Generation<'a, G, R> {
-    pub population: Population<G, R>,
-    weighted_selectors: &'a Vec<WeightedSelector<'a, G, R>>,
+pub struct Generation<'a, G: 'static, R: 'static> {
+    pub population: Population<'a, G, R>,
+    // selector: &'a Selector<G, R>,
+    // weighted_selectors: &'static Vec<WeightedSelector<G, R>>,
     make_child: &'a ChildMaker<G, R>
 }
 
@@ -26,12 +27,14 @@ impl<'a, G: Eq, R: Ord> Generation<'a, G, R> {
     ///
     /// This can panic if the population is empty or the weighted set of
     /// selectors is empty.
-    pub fn new(population: Population<G, R>, weighted_selectors: &'a Vec<WeightedSelector<'a, G, R>>, make_child: &'a ChildMaker<G, R>) -> Self {
-        assert!(!population.is_empty());
-        assert!(!weighted_selectors.is_empty());
+    // pub fn new(population: Population<'a, G, R>, weighted_selectors: &'static Vec<WeightedSelector<G, R>>, make_child: &'a ChildMaker<G, R>) -> Self {
+    pub fn new(population: Population<'a, G, R>, make_child: &'a ChildMaker<G, R>) -> Self {
+            assert!(!population.is_empty());
+        // assert!(!weighted_selectors.is_empty());
         Self {
             population,
-            weighted_selectors,
+            // selector,
+            // weighted_selectors,
             make_child
         }
     }
@@ -40,17 +43,21 @@ impl<'a, G: Eq, R: Ord> Generation<'a, G, R> {
     pub fn best_individual(&self) -> &Individual<G, R> {
         self.population.best_individual()
     }
+}
 
+impl<'a, G, R: PartialOrd> Generation<'a, G, TestResults<R>> {
     /// # Panics
     /// 
     /// This can panic if the set of selectors is empty.
-    pub fn get_parent(&self, rng: &mut ThreadRng) -> &Individual<G, R> {
+    pub fn get_parent(&self, rng: &mut ThreadRng) -> &Individual<G, TestResults<R>> {
         // The set of selectors should be non-empty, and if it is, then we
         // should be able to safely unwrap the `choose()` call.
         #[allow(clippy::unwrap_used)]
-        let s 
-            = self.weighted_selectors.choose_weighted(rng, |item| item.1).unwrap().0;
-        s(&self.population)
+        // let s 
+        //     = self.weighted_selectors.choose_weighted(rng, |item| item.1).unwrap().0;
+        let pop = &self.population;
+        pop.lexicase()
+        // (self.selector)(&self.population)
     }
 }
 
@@ -69,9 +76,11 @@ impl<'a, G: Send + Sync, R: Send + Sync> Generation<'a, G, R> {
                 .map(|_| self)
                 .map_init(rand::thread_rng, self.make_child)
                 .collect();
+        let lexicase_sortings = compute_lexicase_sortings(&individuals);
         Self { 
-            population: Population { individuals },
-            weighted_selectors: self.weighted_selectors,
+            population: Population { individuals, lexicase_sortings },
+            // selector: self.selector,
+            // weighted_selectors: self.weighted_selectors,
             make_child: self.make_child
         }
     }
@@ -86,9 +95,11 @@ impl<'a, G: Send + Sync, R: Send + Sync> Generation<'a, G, R> {
             = (0..pop_size)
                 .map(|_| (self.make_child)(&mut rng, self))
                 .collect();
+        let lexicase_sortings = compute_lexicase_sortings(&individuals);
         Self { 
-            population: Population { individuals },
-            weighted_selectors: self.weighted_selectors,
+            population: Population { individuals, lexicase_sortings },
+            // selector: self.selector,
+            // weighted_selectors: self.weighted_selectors,
             make_child: self.make_child
         }
     }

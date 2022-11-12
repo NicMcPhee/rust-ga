@@ -4,7 +4,7 @@
 #![warn(clippy::expect_used)]
 #![allow(clippy::missing_panics_doc)]
 
-use std::{borrow::Borrow, mem::swap};
+use std::{borrow::Borrow, mem::swap, num};
 use rand::seq::SliceRandom;
 
 use rand::rngs::ThreadRng;
@@ -12,11 +12,25 @@ use rayon::prelude::{ParallelExtend, IntoParallelIterator, ParallelIterator};
 
 use crate::individual::{Individual, TestResults};
 
-pub struct Population<G, R> {
+pub struct Population<'a, G, R> {
     pub individuals: Vec<Individual<G, R>>,
+    pub lexicase_sortings: Vec<Vec<&'a Individual<G, R>>>,
 }
 
-impl<G: Send, R: Send> Population<G, R> {
+pub fn compute_lexicase_sortings<'a, G: IntoIterator, R: Ord>(individuals: &Vec<Individual<G, TestResults<R>>>) -> Vec<Vec<&'a Individual<G, TestResults<R>>>> {
+    assert!(individuals.len() > 0, "The collection of individuals was empty");
+    let g = individuals[0].genome.into_iter();
+    let num_test_cases = g.count();
+    (0..num_test_cases).map(|test_index| {
+        let refs: Vec<_> = individuals.iter().collect();
+        refs.sort_by_key(|i| {
+            i.test_results.results[test_index]
+        });
+        refs
+    }).collect()
+}
+
+impl<'a, G: Send, R: Send> Population<'a, G, R> {
     /*
      * See the lengthy comment in `individual.rs` on why we need the
      * whole `Borrow<H>` business.
@@ -39,13 +53,15 @@ impl<G: Send, R: Send> Population<G, R> {
                     Individual::new(&make_genome, &run_tests, rng)
                 })
         );
+        let lexicase_sortings = compute_lexicase_sortings(&individuals); 
         Self {
             individuals,
+            lexicase_sortings,
         }
     }
 }
 
-impl<G, R> Population<G, R> {
+impl<'a, G, R> Population<'a, G, R> {
     #[must_use]
     pub fn is_empty(&self) -> bool {
         self.individuals.is_empty()
@@ -57,7 +73,7 @@ impl<G, R> Population<G, R> {
     }
 }
 
-impl<G: Eq, R: Ord> Population<G, R> {
+impl<'a, G: Eq, R: Ord> Population<'a, G, R> {
     /// # Panics
     /// 
     /// Will panic if the population is empty.
@@ -73,15 +89,15 @@ impl<G: Eq, R: Ord> Population<G, R> {
     }
 }
 
-impl<G, R> Population<G, R> {
+impl<'a, G, R> Population<'a, G, R> {
     #[must_use]
     pub fn random(&self) -> Option<&Individual<G, R>> {
         self.individuals.choose(&mut rand::thread_rng())
     }
 }
 
-impl<G: Eq, R: Ord> Population<G, R> {
-    pub fn make_tournament_selector(tournament_size: usize) -> impl Fn(&Self) -> &Individual<G, R> {
+impl<'a, G: Eq, R: Ord> Population<'a, G, R> {
+    pub fn make_tournament_selector(tournament_size: usize) -> impl Fn(&'a Population<'a, G, R>) -> &'a Individual<G, R> {
         move |pop: &Self| {
             pop.tournament(tournament_size)
         }
@@ -100,7 +116,7 @@ impl<G: Eq, R: Ord> Population<G, R> {
     }
 }
 
-impl<G, R: PartialOrd> Population<G, TestResults<R>> {
+impl<'a, G, R: PartialOrd> Population<'a, G, TestResults<R>> {
     #[must_use]
     pub fn lexicase(&self) -> &Individual<G, TestResults<R>> {
         // Candidate set is initially the whole population.
@@ -148,5 +164,10 @@ impl<G, R: PartialOrd> Population<G, TestResults<R>> {
 
         candidates.shuffle(&mut rand::thread_rng());
         candidates[0]
+    }
+
+    #[must_use]
+    pub fn sorting_lexicase(&self) -> &Individual<G, TestResults<R>> {
+        todo!()
     }
 }
