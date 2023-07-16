@@ -4,6 +4,8 @@
 #![warn(clippy::expect_used)]
 #![allow(clippy::redundant_pub_crate)]
 
+use std::iter::repeat_with;
+
 use ec_core::{
     individual::Individual,
     operator::selector::{lexicase::Lexicase, Selector},
@@ -50,41 +52,37 @@ impl Individual for PyIndividual {
     }
 }
 
+fn transform_population(py: Python<'_>, pop: Vec<PyObject>) -> PyResult<Vec<PyIndividual>> {
+    pop.into_iter()
+        .map(|i| PyIndividual::new(py, i))
+        .collect::<PyResult<Vec<PyIndividual>>>()
+}
+
 #[pyfunction]
 fn select_one(py: Python<'_>, pop: Vec<PyObject>) -> PyResult<PyObject> {
-    let num_cases = PyIndividual::new(py, pop[0].clone())?
-        .test_results()
-        .results
-        .len();
+    let population = transform_population(py, pop)?;
+    let num_cases = population[0].errors.results.len();
     let lexicase = Lexicase::new(num_cases);
-    let population = pop
-        .into_iter()
-        .map(|i| PyIndividual::new(py, i))
-        .collect::<PyResult<Vec<PyIndividual>>>()?;
     let mut rng = thread_rng();
     Ok(lexicase.select(&population, &mut rng)?.py_individual())
 }
 
-// #[pyfunction]
-// fn select(pop: Vec<PyshGpIndividual>, n: usize) -> PyResult<Vec<PyshGpIndividual>> {
-//     Ok(pop.into_iter().take(n).collect())
-// }
+#[pyfunction]
+fn select(py: Python<'_>, pop: Vec<PyObject>, n: usize) -> PyResult<Vec<PyObject>> {
+    let population = transform_population(py, pop)?;
+    let num_cases = population[0].errors.results.len();
+    let lexicase = Lexicase::new(num_cases);
+    let mut rng = thread_rng();
+    Ok(repeat_with(|| lexicase.select(&population, &mut rng))
+        .take(n)
+        .map(|r| r.map(PyIndividual::py_individual))
+        .collect::<Result<Vec<_>, _>>()?)
+}
 
 /// A Python module implemented in Rust.
 #[pymodule]
 fn rust_lexicase(_py: Python, m: &PyModule) -> PyResult<()> {
     m.add_function(wrap_pyfunction!(select_one, m)?)?;
-    // m.add_function(wrap_pyfunction!(select, m)?)?;
+    m.add_function(wrap_pyfunction!(select, m)?)?;
     Ok(())
 }
-
-/*
-class Individual:
-     def __init__(self, errors):
-             self._error_vector = errors
-     def error_vector(self):
-             return self._error_vector
-
-winner = rust_lexicase.select_one([Individual([5, 8, 9]), Individual([3, 2, 0]), Individual([6, 3, 2])])
-
- */

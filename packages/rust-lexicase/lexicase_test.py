@@ -20,7 +20,7 @@ population = []
 
 for _ in range(POP_SIZE):
     individual = Individual(None, None)
-    individual.error_vector = np.array(random.choices(range(10), k=100))
+    individual.error_vector = np.array(random.choices(range(1000), k=100))
     # print("Making parent")
     # print(individual.error_vector)
     population.append(individual)
@@ -34,16 +34,19 @@ print(population)
 pop = Population(population)
 lexicase = Lexicase()
 
-NUM_ITER = 100
+NUM_ITER = 1000
 
 evs = []
 
 t0 = time.perf_counter()
-for _ in range(NUM_ITER):
-    # print("Selecing child")
-    child = lexicase.select_one(pop)
-    # evs.append(child.error_vector.tolist())
-    # print(child.error_vector)
+# for _ in range(NUM_ITER):
+#     # print("Selecing child")
+#     child = lexicase.select_one(pop)
+#     # evs.append(child.error_vector.tolist())
+#     # print(child.error_vector)
+
+children = lexicase.select(pop, NUM_ITER)
+
 t1 = time.perf_counter()
 
 # evs.sort()
@@ -58,11 +61,14 @@ print(f"Python took an avg of {took * 1000:.5f}ms per iteration")
 evs = []
 
 t0 = time.perf_counter()
-for _ in range(NUM_ITER):
-    # print("Selecing child")
-    child = rust_lexicase.select_one(pop)
-    # evs.append(child.error_vector.tolist())
-    # print(child.error_vector)
+# for _ in range(NUM_ITER):
+#     # print("Selecing child")
+#     child = rust_lexicase.select_one(pop)
+#     # evs.append(child.error_vector.tolist())
+#     # print(child.error_vector)
+
+children = rust_lexicase.select(pop, NUM_ITER)
+
 t1 = time.perf_counter()
 
 # evs.sort()
