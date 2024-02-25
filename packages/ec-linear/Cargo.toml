@@ -15,6 +15,7 @@ rand = { workspace = true, features = ["alloc"] }
 
 ec-core = { workspace = true }
 
+[dev-dependencies]
 quickcheck = "1.0.3"
 quickcheck_macros = "1.0.0"
 

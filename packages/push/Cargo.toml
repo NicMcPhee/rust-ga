@@ -17,7 +17,6 @@ thiserror = { workspace = true }
 ec-core = { workspace = true }
 ec-linear = { workspace = true }
 
-proptest = "1.2.0"
 strum = "0.26.1"
 strum_macros = "0.26.1"
 embed-doc-image = "0.1.4"
@@ -29,6 +28,7 @@ macro_railroad_annotation = { workspace = true }
 
 [dev-dependencies]
 clap = { version = "4.5.1", features = ["derive"] }
+proptest = "1.2.0"
 
 [features]
 default = ["macros"]
