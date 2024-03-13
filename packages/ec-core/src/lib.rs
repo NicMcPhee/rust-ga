@@ -1,6 +1,6 @@
 pub mod child_maker;
+pub mod distributions;
 pub mod generation;
-pub mod generator;
 pub mod genome;
 pub mod individual;
 pub mod operator;

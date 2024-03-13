@@ -13,11 +13,7 @@
 /// Finally, the module implements the `Generator` trait for the
 /// `CollectionGenerator` struct, allowing it to generate a `Vec` of random
 /// elements using the `generate` method.
-use std::iter::repeat_with;
-
-use rand::rngs::ThreadRng;
-
-use super::Generator;
+use rand::prelude::Distribution;
 
 /// Information for generating a collection of random elements.
 ///
@@ -89,21 +85,13 @@ where
 ///
 /// This returns an `anyhow::Error` generating any of
 /// the elements returns an error.
-impl<T, C> Generator<Vec<T>> for CollectionGenerator<C>
+impl<T, C> Distribution<Vec<T>> for CollectionGenerator<C>
 where
-    C: Generator<T>,
+    C: Distribution<T>,
 {
-    fn generate(&self, rng: &mut ThreadRng) -> anyhow::Result<Vec<T>> {
-        // Doing some reading, I _think_ this will properly pre-allocate an
-        // appropriately sized `Vec` to collect into.
-        // https://users.rust-lang.org/t/collect-for-exactsizediterator/54367/2
-        // says, for example, that collecting into a `Vec` will pre-allocate to the
-        // minimum returned by `type_hints`. Looking at the code,
-        // it seems that `repeat_with` returns "infinity" for the
-        // minimum size, and `take` returns the `min` of `self.size` and the minimum
-        // size from the preceding iterator (infinity). This will always be
-        // `self.size`, which is just what we'd want the size allocation to be.
-        repeat_with(|| self.element_generator.generate(rng))
+    fn sample<R: rand::Rng + ?Sized>(&self, rng: &mut R) -> Vec<T> {
+        (&self.element_generator)
+            .sample_iter(rng)
             .take(self.size)
             .collect()
     }

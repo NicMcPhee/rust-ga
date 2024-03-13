@@ -5,12 +5,9 @@ use std::ops::Not;
 use anyhow::{ensure, Result};
 use clap::Parser;
 use ec_core::{
+    distributions::collection::ConvertToCollectionGenerator,
     generation::Generation,
-    generator::{collection::ConvertToCollectionGenerator, Generator},
-    individual::{
-        ec::{EcIndividual, WithScorer},
-        scorer::FnScorer,
-    },
+    individual::{ec::WithScorer, scorer::FnScorer},
     operator::{
         genome_extractor::GenomeExtractor,
         genome_scorer::GenomeScorer,
@@ -24,38 +21,97 @@ use ec_core::{
     test_results::{self, TestResults},
 };
 use ec_linear::mutator::umad::Umad;
+use num_traits::Float;
 use ordered_float::OrderedFloat;
 use push::{
+    evaluation::cases::{Case, Cases, WithTarget},
     genome::plushy::{GeneGenerator, Plushy},
     instruction::{variable_name::VariableName, FloatInstruction},
     push_vm::{program::PushProgram, push_state::PushState, HasStack, State},
     vec_into,
 };
-use rand::thread_rng;
+use rand::{distributions::Distribution, thread_rng};
 
 use crate::args::{Args, RunModel};
 
 /*
- * This is an implementation of the "simple regression" problem from the
- * Clojush implementation of PushGP:
- * https://github.com/lspector/Clojush/blob/e2c9d8c830715f7d1e644f6205c192b9e5ceead2/src/clojush/problems/demos/simple_regression.clj
- */
+* This is an implementation of the "simple regression" problem from the
+
+* Clojush implementation of PushGP:
+* https://github.com/lspector/Clojush/blob/e2c9d8c830715f7d1e644f6205c192b9e5ceead2/src/clojush/problems/demos/simple_regression.clj
+*/
+
+const PENALTY_VALUE: f64 = 1_000.0;
+
+type Of64 = OrderedFloat<f64>;
+
+fn target_fn(input: Of64) -> Of64 {
+    input.powi(3) - Of64::from(2) * input.powi(2) - input
+}
+
+fn build_push_state(
+    program: impl DoubleEndedIterator<Item = PushProgram> + ExactSizeIterator,
+    input: Of64,
+) -> PushState {
+    #[allow(clippy::unwrap_used)]
+    PushState::builder()
+        .with_max_stack_size(1000)
+        .with_program(program)
+        // This will return an error if the program is longer than the allowed
+        // max stack size.
+        // We arguably should check that and return an error here.
+        .unwrap()
+        .with_float_input("x", input)
+        .build()
+}
+
+fn score_program(
+    program: impl DoubleEndedIterator<Item = PushProgram> + ExactSizeIterator,
+    Case { input, output }: Case<Of64>,
+) -> Of64 {
+    let state = build_push_state(program, input);
+    #[allow(clippy::option_if_let_else)]
+    match state.run_to_completion() {
+        Ok(final_state) => final_state
+            .stack::<Of64>()
+            .top()
+            .map_or(Of64::from(PENALTY_VALUE), |answer| (answer - output).abs()),
+
+        Err(_) => {
+            // Do some logging, perhaps?
+            Of64::from(PENALTY_VALUE)
+        }
+    }
+}
+
+fn score_genome(
+    genome: &Plushy,
+    training_cases: &Cases<Of64>,
+) -> TestResults<test_results::Error<Of64>> {
+    let program: Vec<PushProgram> = genome.clone().into();
+
+    training_cases
+        .iter()
+        .map(|&case| score_program(program.iter().cloned(), case))
+        .collect()
+}
 
 fn main() -> Result<()> {
-    // Using `Error` in `TestResults<Error>` will have the run favor smaller
-    // values, where using `Score` (e.g., `TestResults<Score>`) will have the run
-    // favor larger values.
-    type Pop = Vec<EcIndividual<Plushy, TestResults<test_results::Error<OrderedFloat<f64>>>>>;
-    // The penalty value to use when an evolved program doesn't have an expected
-    // "return" value on the appropriate stack at the end of its execution.
-    let penalty_value: OrderedFloat<f64> = OrderedFloat::from(1_000.0);
+    let Args {
+        run_model,
+        population_size,
+        max_initial_instructions,
+        // FIXME: Actually use this
+        max_genome_length: _,
+        num_generations,
+    } = Args::parse();
 
-    let args = Args::parse();
+    let mut rng = thread_rng();
 
     // Inputs from -4 (inclusive) to 4 (exclusive) in increments of 0.25.
-    let training_inputs = (-4 * 4..4 * 4)
-        .map(|n| OrderedFloat(f64::from(n) / 4.0))
-        .collect::<Vec<_>>();
+    let training_cases = (-4 * 4..4 * 4)
+        .map(|n| Of64::from(n) / 4.0)
+        .with_target(|&i| target_fn(i));
 
     /*
      * The `scorer` will need to take an evolved program (sequence of
@@ -66,51 +122,13 @@ fn main() -> Result<()> {
      *
      * The target polynomial is x^3 - 2x^2 - x
      */
-    let scorer = FnScorer(
-        |genome: &Plushy| -> TestResults<test_results::Error<OrderedFloat<f64>>> {
-            let program = Vec::<PushProgram>::from(genome.clone());
-            let errors: TestResults<test_results::Error<OrderedFloat<f64>>> = training_inputs
-                .iter()
-                .map(|&input| {
-                    #[allow(clippy::unwrap_used)]
-                    let state = PushState::builder()
-                        .with_max_stack_size(1000)
-                        .with_program(program.clone())
-                        // This will return an error if the program is longer than the allowed
-                        // max stack size.
-                        // We arguably should check that and return an error here.
-                        .unwrap()
-                        .with_float_input("x", input)
-                        .build();
-                    let expected = input * input * input
-                        - OrderedFloat::<f64>::from(2f64) * input * input
-                        - input;
-                    #[allow(clippy::option_if_let_else)]
-                    match state.run_to_completion() {
-                        Ok(final_state) => final_state
-                            .stack::<OrderedFloat<f64>>()
-                            .top()
-                            .map_or(penalty_value, |answer| (answer - expected).abs().into()),
-                        Err(_) => {
-                            // Do some logging, perhaps?
-                            penalty_value
-                        }
-                    }
-                })
-                .collect();
-            errors
-        },
-    );
+    let scorer = FnScorer(|genome: &Plushy| score_genome(genome, &training_cases));
 
     let num_test_cases = 10;
-    let lexicase = Lexicase::new(num_test_cases);
-    let binary_tournament = Tournament::new(2);
 
-    let selector: Weighted<Pop> = Weighted::new(Best, 1)
-        .with_selector(lexicase, 5)
-        .with_selector(binary_tournament, args.population_size - 1);
-
-    let mut rng = thread_rng();
+    let selector = Weighted::new(Best, 1)
+        .with_selector(Lexicase::new(num_test_cases), 5)
+        .with_selector(Tournament::new(2), population_size - 1);
 
     let instruction_set = vec_into![
         FloatInstruction::Add,
@@ -120,13 +138,13 @@ fn main() -> Result<()> {
         VariableName::from("x")
     ];
 
-    let gene_generator = GeneGenerator::with_uniform_close_probability(instruction_set);
+    let gene_generator = GeneGenerator::with_uniform_close_probability(&instruction_set)?;
 
     let population = gene_generator
-        .to_collection_generator(args.max_initial_instructions)
+        .to_collection_generator(max_initial_instructions)
         .with_scorer(scorer)
-        .into_collection_generator(args.population_size)
-        .generate(&mut rng)?;
+        .into_collection_generator(population_size)
+        .sample(&mut rng);
 
     ensure!(population.is_empty().not());
 
@@ -145,15 +163,15 @@ fn main() -> Result<()> {
     // TODO: It might be useful to insert some kind of logging system so we can
     // make this less imperative in nature.
 
-    for generation_number in 0..args.num_generations {
-        match args.run_model {
+    for generation_number in 0..num_generations {
+        match run_model {
             RunModel::Serial => generation.serial_next()?,
             RunModel::Parallel => generation.par_next()?,
         }
 
         let best = Best.select(generation.population(), &mut rng)?;
         // TODO: Change 2 to be the smallest number of digits needed for
-        // args.num_generations-1.
+        // num_generations-1.
         println!("Generation {generation_number:2} best is {best:#?}");
 
         if best.test_results.total_result.error == OrderedFloat(0.0) {

@@ -1,10 +1,13 @@
 use easy_cast::ConvApprox;
 use ec_core::{
-    generator::{collection::CollectionGenerator, Generator},
+    distributions::{
+        collection::CollectionGenerator,
+        wrappers::slice_cloning::{EmptySlice, SliceCloning},
+    },
     genome::Genome,
 };
 use ec_linear::genome::Linear;
-use rand::{rngs::ThreadRng, Rng};
+use rand::{prelude::Distribution, Rng};
 
 use crate::instruction::PushInstruction;
 
@@ -33,35 +36,51 @@ impl std::fmt::Debug for PushGene {
 }
 
 #[derive(Debug, Clone)]
-pub struct GeneGenerator {
+pub struct GeneGenerator<T>
+where
+    T: Distribution<PushInstruction>,
+{
     close_probability: f32,
-    instructions: Vec<PushInstruction>,
+    instructions_distribution: T,
 }
 
-impl GeneGenerator {
+impl<T> GeneGenerator<T>
+where
+    T: Distribution<PushInstruction>,
+{
     #[must_use]
-    pub fn new(close_probability: f32, instructions: Vec<PushInstruction>) -> Self {
+    pub const fn new(close_probability: f32, instructions_distribution: T) -> Self {
         Self {
             close_probability,
-            instructions,
-        }
-    }
-
-    #[must_use]
-    pub fn with_uniform_close_probability(instructions: Vec<PushInstruction>) -> Self {
-        Self {
-            close_probability: 1.0 / f32::conv_approx(instructions.len() + 1),
-            instructions,
+            instructions_distribution,
         }
     }
 }
+impl<'a> GeneGenerator<SliceCloning<'a, PushInstruction>> {
+    /// Create a generator where the close tag is just as likely as any passed
+    /// instruction
+    ///
+    /// # Errors
+    /// - [`EmptySlice`] if the passed in slice is empty
+    pub fn with_uniform_close_probability(
+        instructions: &'a [PushInstruction],
+    ) -> Result<Self, EmptySlice> {
+        Ok(Self::new(
+            1.0 / f32::conv_approx(instructions.len() + 1),
+            SliceCloning::new(instructions)?,
+        ))
+    }
+}
 
-impl Generator<PushGene> for GeneGenerator {
-    fn generate(&self, rng: &mut ThreadRng) -> anyhow::Result<PushGene> {
+impl<T> Distribution<PushGene> for GeneGenerator<T>
+where
+    T: Distribution<PushInstruction>,
+{
+    fn sample<R: Rng + ?Sized>(&self, rng: &mut R) -> PushGene {
         if rng.gen::<f32>() < self.close_probability {
-            Ok(PushGene::Close)
+            PushGene::Close
         } else {
-            self.instructions.generate(rng).map(PushGene::Instruction)
+            PushGene::Instruction(self.instructions_distribution.sample(rng))
         }
     }
 }
@@ -101,14 +120,14 @@ impl Linear for Plushy {
     }
 }
 
-impl<GG> Generator<Plushy> for CollectionGenerator<GG>
+impl<GG> Distribution<Plushy> for CollectionGenerator<GG>
 where
-    GG: Generator<PushGene>,
+    GG: Distribution<PushGene>,
 {
-    fn generate(&self, rng: &mut ThreadRng) -> anyhow::Result<Plushy> {
-        Ok(Plushy {
-            genes: self.generate(rng)?,
-        })
+    fn sample<R: Rng + ?Sized>(&self, rng: &mut R) -> Plushy {
+        Plushy {
+            genes: rng.sample(self),
+        }
     }
 }
 
@@ -130,9 +149,12 @@ impl FromIterator<PushGene> for Plushy {
     }
 }
 
+#[allow(clippy::unwrap_used)]
 #[cfg(test)]
 mod test {
-    use ec_core::operator::mutator::Mutator;
+    use ec_core::{
+        distributions::collection::ConvertToCollectionGenerator, operator::mutator::Mutator,
+    };
     use ec_linear::mutator::umad::Umad;
     use rand::thread_rng;
 
@@ -147,20 +169,20 @@ mod test {
     #[test]
     #[allow(clippy::unwrap_used)]
     fn generator() {
-        let instructions: Vec<PushInstruction> = vec_into![
+        let instructions = arr_into![<PushInstruction>
             IntInstruction::Add,
             IntInstruction::Subtract,
             IntInstruction::Multiply,
             IntInstruction::ProtectedDivide,
         ];
-        let gene_generator = GeneGenerator::with_uniform_close_probability(instructions);
+
         let mut rng = thread_rng();
-        let plushy: Plushy = CollectionGenerator {
-            size: 10,
-            element_generator: gene_generator,
-        }
-        .generate(&mut rng)
-        .unwrap();
+
+        let plushy: Plushy = GeneGenerator::with_uniform_close_probability(&instructions)
+            .unwrap()
+            .into_collection_generator(10)
+            .sample(&mut rng);
+
         assert_eq!(10, plushy.genes.len());
     }
 
@@ -168,7 +190,9 @@ mod test {
     fn umad() {
         let mut rng = thread_rng();
 
-        let instruction_options = arr_into![<PushGene> VariableName::from("x")];
+        let binding = arr_into![<PushGene> VariableName::from("x")];
+
+        let instruction_options = SliceCloning::new(&binding).unwrap();
         let umad = Umad::new(0.3, 0.3, instruction_options);
 
         let parent = Plushy {
