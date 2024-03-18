@@ -30,6 +30,9 @@ pub enum IntInstruction {
     // so we might need to do the log(n) integer
     // implementation of sqrt.
     // Sqrt,
+    IsZero,
+    IsPositive,
+    IsNegative,
     IsEven,
     IsOdd,
     Equal,
@@ -211,7 +214,10 @@ where
                     }
                 }
             }
-            Self::IsEven
+            Self::IsZero
+            | Self::IsPositive
+            | Self::IsNegative
+            | Self::IsEven
             | Self::IsOdd
             | Self::Equal
             | Self::NotEqual
@@ -231,6 +237,24 @@ where
                 }
                 let int_stack: &mut Stack<i64> = state.stack_mut::<i64>();
                 match self {
+                    Self::IsZero => int_stack
+                        .top()
+                        .map_err(PushInstructionError::from)
+                        .map(|&x| x == 0)
+                        .with_stack_push(state)
+                        .with_stack_discard::<i64>(1),
+                    Self::IsPositive => int_stack
+                        .top()
+                        .map_err(PushInstructionError::from)
+                        .map(|&x| x > 0)
+                        .with_stack_push(state)
+                        .with_stack_discard::<i64>(1),
+                    Self::IsNegative => int_stack
+                        .top()
+                        .map_err(PushInstructionError::from)
+                        .map(|&x| x < 0)
+                        .with_stack_push(state)
+                        .with_stack_discard::<i64>(1),
                     // TODO: Write a test for IsEven that makes sure
                     // all the stack manipulation is correct.
                     Self::IsEven => int_stack
