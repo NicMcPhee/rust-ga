@@ -210,6 +210,7 @@ version = "0.1.0"
 dependencies = [
  "anyhow",
  "itertools 0.12.1",
+ "macro_railroad_annotation",
  "num-traits",
  "rand",
  "rayon",

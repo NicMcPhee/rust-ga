@@ -5,8 +5,8 @@ use std::ops::Not;
 use anyhow::{ensure, Result};
 use clap::Parser;
 use ec_core::{
+    distributions::collection::ConvertToCollectionGenerator,
     generation::Generation,
-    generator::{collection::ConvertToCollectionGenerator, Generator},
     individual::{
         ec::{EcIndividual, WithScorer},
         scorer::FnScorer,
@@ -25,11 +25,13 @@ use ec_core::{
     test_results::{self, TestResults},
 };
 use ec_linear::{
-    genome::bitstring::{Bitstring, BoolGenerator},
-    mutator::with_one_over_length::WithOneOverLength,
+    genome::bitstring::Bitstring, mutator::with_one_over_length::WithOneOverLength,
     recombinator::two_point_xo::TwoPointXo,
 };
-use rand::thread_rng;
+use rand::{
+    distributions::{Distribution, Standard},
+    thread_rng,
+};
 
 use crate::args::{Args, RunModel};
 
@@ -59,13 +61,11 @@ fn main() -> Result<()> {
 
     let mut rng = thread_rng();
 
-    let boolean_generator = BoolGenerator { p: 0.5 };
-
-    let population = boolean_generator
+    let population = Standard
         .to_collection_generator(args.bit_length)
         .with_scorer(scorer)
         .into_collection_generator(args.population_size)
-        .generate(&mut rng)?;
+        .sample(&mut rng);
 
     ensure!(population.is_empty().not());
 

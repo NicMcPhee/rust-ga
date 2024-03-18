@@ -2,10 +2,10 @@ use std::fmt::Display;
 
 use anyhow::bail;
 use ec_core::{
-    generator::{collection::CollectionGenerator, Generator},
+    distributions::collection::{CollectionGenerator, ConvertToCollectionGenerator},
     genome::Genome,
 };
-use rand::{rngs::ThreadRng, Rng};
+use rand::{distributions::Standard, prelude::Distribution, rngs::ThreadRng, Rng};
 
 use super::Linear;
 use crate::recombinator::crossover::Crossover;
@@ -14,12 +14,19 @@ use crate::recombinator::crossover::Crossover;
 //   `LinearGenome<bool>`.
 
 pub struct BoolGenerator {
-    pub p: f64,
+    pub true_probability: f64,
 }
 
-impl Generator<bool> for BoolGenerator {
-    fn generate(&self, rng: &mut ThreadRng) -> anyhow::Result<bool> {
-        Ok(rng.gen_bool(self.p))
+impl BoolGenerator {
+    #[must_use]
+    pub const fn new(true_probability: f64) -> Self {
+        Self { true_probability }
+    }
+}
+
+impl Distribution<bool> for BoolGenerator {
+    fn sample<R: Rng + ?Sized>(&self, rng: &mut R) -> bool {
+        rng.gen_bool(self.true_probability)
     }
 }
 
@@ -28,45 +35,26 @@ pub struct Bitstring {
     pub bits: Vec<bool>,
 }
 
-impl<BG> Generator<Bitstring> for CollectionGenerator<BG>
+impl<BG> Distribution<Bitstring> for CollectionGenerator<BG>
 where
-    BG: Generator<bool>,
+    BG: Distribution<bool>,
 {
-    fn generate(&self, rng: &mut ThreadRng) -> anyhow::Result<Bitstring> {
-        let bits = self.generate(rng)?;
-        Ok(Bitstring { bits })
+    fn sample<R: Rng + ?Sized>(&self, rng: &mut R) -> Bitstring {
+        Bitstring {
+            bits: self.sample(rng),
+        }
     }
 }
 
 impl Bitstring {
-    /// # Errors
-    ///
-    /// This returns an `anyhow::Result<>` as required by the `Generate` trait.
-    /// I shouldn't actually   ever return an error in this setting, as we
-    /// should always be able to generate a vector of   booleans.
-    // TODO: I think that the `!` type could be used here to indicate that this
-    // can't fail, but that's still nightly.
-    pub fn random(num_bits: usize, rng: &mut ThreadRng) -> anyhow::Result<Self> {
-        Self::random_with_probability(num_bits, 0.5, rng)
+    pub fn random(num_bits: usize, rng: &mut ThreadRng) -> Self {
+        Standard.into_collection_generator(num_bits).sample(rng)
     }
 
-    /// # Errors
-    ///
-    /// This returns an `anyhow::Result<>` as required by the `Generate` trait.
-    /// I shouldn't actually   ever return an error in this setting, as we
-    /// should always be able to generate a vector of   booleans.
-    // TODO: I think that the `!` type could be used here to indicate that this
-    // can't fail, but that's still nightly
-    pub fn random_with_probability(
-        num_bits: usize,
-        probability: f64,
-        rng: &mut ThreadRng,
-    ) -> anyhow::Result<Self> {
-        CollectionGenerator {
-            size: num_bits,
-            element_generator: BoolGenerator { p: probability },
-        }
-        .generate(rng)
+    pub fn random_with_probability(num_bits: usize, probability: f64, rng: &mut ThreadRng) -> Self {
+        BoolGenerator::new(probability)
+            .into_collection_generator(num_bits)
+            .sample(rng)
     }
 
     pub fn iter(&self) -> std::slice::Iter<bool> {
