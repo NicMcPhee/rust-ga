@@ -17,23 +17,22 @@ impl<I> Population for Vec<I> {
 }
 
 #[cfg(test)]
-mod generator_trait_tests {
+mod tests {
     use core::ops::Range;
 
-    use rand::{rngs::ThreadRng, thread_rng, Rng};
+    use rand::{prelude::Distribution, thread_rng, Rng};
 
-    use super::*;
-    use crate::generator::{collection::CollectionGenerator, Generator};
+    use crate::{distributions::collection::ConvertToCollectionGenerator, population::Population};
 
     struct RandValue {
         val: i32,
     }
 
-    impl Generator<RandValue> for Range<i32> {
-        fn generate(&self, rng: &mut ThreadRng) -> anyhow::Result<RandValue> {
-            Ok(RandValue {
+    impl Distribution<RandValue> for Range<i32> {
+        fn sample<R: Rng + ?Sized>(&self, rng: &mut R) -> RandValue {
+            RandValue {
                 val: rng.gen_range(self.clone()),
-            })
+            }
         }
     }
 
@@ -43,11 +42,10 @@ mod generator_trait_tests {
         let mut rng = thread_rng();
         let population_size = 10;
         let range = -10..25;
-        let pop_generator = CollectionGenerator {
-            size: population_size,
-            element_generator: range.clone(),
-        };
-        let vec_pop = pop_generator.generate(&mut rng).unwrap();
+        let vec_pop = range
+            .to_collection_generator(population_size)
+            .sample(&mut rng);
+
         assert_eq!(population_size, vec_pop.size());
         for i in vec_pop {
             assert!(range.contains(&i.val));

@@ -5,8 +5,8 @@ use std::ops::Not;
 use anyhow::{ensure, Result};
 use clap::Parser;
 use ec_core::{
+    distributions::collection::ConvertToCollectionGenerator,
     generation::Generation,
-    generator::{collection::ConvertToCollectionGenerator, Generator},
     individual::{ec::WithScorer, scorer::FnScorer},
     operator::{
         genome_extractor::GenomeExtractor,
@@ -16,17 +16,17 @@ use ec_core::{
         Composable,
     },
     test_results::{self, TestResults},
+    uniform_distribution_of,
 };
 use ec_linear::mutator::umad::Umad;
 use ordered_float::OrderedFloat;
 use push::{
     evaluation::cases::{Case, Cases},
-    genome::plushy::{GeneGenerator, Plushy},
-    instruction::{variable_name::VariableName, FloatInstruction},
+    genome::plushy::{ConvertToGeneGenerator, Plushy},
+    instruction::{variable_name::VariableName, FloatInstruction, PushInstruction},
     push_vm::{program::PushProgram, push_state::PushState, HasStack, State},
-    vec_into,
 };
-use rand::thread_rng;
+use rand::{prelude::Distribution, thread_rng};
 
 use crate::args::{Args, RunModel};
 
@@ -127,7 +127,7 @@ fn main() -> Result<()> {
 
     let mut rng = thread_rng();
 
-    let instruction_set = vec_into![
+    let gene_generator = uniform_distribution_of![<PushInstruction>
         FloatInstruction::Add,
         FloatInstruction::Subtract,
         FloatInstruction::Multiply,
@@ -136,15 +136,14 @@ fn main() -> Result<()> {
         FloatInstruction::Push(OrderedFloat(0.0)),
         FloatInstruction::Push(OrderedFloat(1.0)),
         VariableName::from("x")
-    ];
-
-    let gene_generator = GeneGenerator::with_uniform_close_probability(instruction_set);
+    ]
+    .into_gene_generator();
 
     let population = gene_generator
         .to_collection_generator(args.max_initial_instructions)
         .with_scorer(scorer)
         .into_collection_generator(args.population_size)
-        .generate(&mut rng)?;
+        .sample(&mut rng);
 
     ensure!(population.is_empty().not());
 

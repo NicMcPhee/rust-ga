@@ -5,10 +5,10 @@ use std::{iter::once, ops::Not};
 use anyhow::{ensure, Result};
 use clap::Parser;
 use ec_core::{
+    distributions::collection::ConvertToCollectionGenerator,
     generation::Generation,
-    generator::{collection::CollectionGenerator, Generator},
     individual::{
-        ec::{self, EcIndividual},
+        ec::{EcIndividual, WithScorer},
         scorer::FnScorer,
     },
     operator::{
@@ -25,11 +25,10 @@ use ec_core::{
     test_results::{self, TestResults},
 };
 use ec_linear::{
-    genome::bitstring::{Bitstring, BoolGenerator},
-    mutator::with_one_over_length::WithOneOverLength,
+    genome::bitstring::Bitstring, mutator::with_one_over_length::WithOneOverLength,
     recombinator::two_point_xo::TwoPointXo,
 };
-use rand::thread_rng;
+use rand::{distributions::Standard, prelude::Distribution, thread_rng};
 
 use crate::args::{Args, RunModel};
 
@@ -80,23 +79,11 @@ fn main() -> Result<()> {
 
     let mut rng = thread_rng();
 
-    let boolean_generator = BoolGenerator { p: 0.5 };
-
-    let bitstring_generator = CollectionGenerator {
-        size: args.bit_length,
-        element_generator: boolean_generator,
-    };
-
-    let individual_generator = ec::IndividualGenerator {
-        scorer,
-        genome_generator: bitstring_generator,
-    };
-
-    let population_generator = CollectionGenerator {
-        size: args.population_size,
-        element_generator: individual_generator,
-    };
-    let population = population_generator.generate(&mut rng)?;
+    let population = Standard
+        .into_collection_generator(args.bit_length)
+        .with_scorer(scorer)
+        .into_collection_generator(args.population_size)
+        .sample(&mut rng);
 
     ensure!(population.is_empty().not());
 

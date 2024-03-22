@@ -7,13 +7,12 @@ use std::{
     fmt::{Debug, Display},
 };
 
-use rand::rngs::ThreadRng;
+use rand::prelude::Distribution;
 
 use super::{
     scorer::{FnScorer, Scorer},
     Individual,
 };
-use crate::generator::Generator;
 
 /// `EcIndividual` is a struct that represents an individual in an evolutionary
 /// computation system. It contains a genome and the results of scoring the
@@ -123,11 +122,10 @@ impl<GG> WithScorer for GG {
 }
 
 // G is Genome
-// GG is Genome generator
 // S is Scorer
-impl<G, GG, S> Generator<EcIndividual<G, S::Score>> for IndividualGenerator<GG, S>
+impl<G, D, S> Distribution<EcIndividual<G, S::Score>> for IndividualGenerator<D, S>
 where
-    GG: Generator<G>,
+    D: Distribution<G>,
     S: Scorer<G>,
 {
     /// Generate a new, random, individual.
@@ -136,9 +134,10 @@ where
     /// type `GG`, and then scores the genome using the scorer of type `S`.
     /// The genome and the test results (of type `S::Score`) are then
     /// used to create a new `EcIndividual`.
-    fn generate(&self, rng: &mut ThreadRng) -> anyhow::Result<EcIndividual<G, S::Score>> {
-        let genome = self.genome_generator.generate(rng)?;
+    fn sample<R: rand::Rng + ?Sized>(&self, rng: &mut R) -> EcIndividual<G, S::Score> {
+        let genome = self.genome_generator.sample(rng);
         let test_results = self.scorer.score(&genome);
-        Ok(EcIndividual::new(genome, test_results))
+
+        EcIndividual::new(genome, test_results)
     }
 }

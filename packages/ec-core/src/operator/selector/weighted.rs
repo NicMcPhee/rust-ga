@@ -1,5 +1,5 @@
 use anyhow::{Context, Result};
-use rand::{rngs::ThreadRng, seq::SliceRandom};
+use rand::{rngs::ThreadRng, seq::IndexedRandom};
 
 use super::Selector;
 use crate::population::Population;
