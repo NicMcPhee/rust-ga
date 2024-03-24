@@ -16,7 +16,7 @@ manyhow = "0.11.0"
 proc-macro-assertions = "0.1.5"
 proc-macro2 = "1.0.69"
 quote = "1.0.33"
-syn = { version = "2.0.50", features = ["full", "printing"] }
+syn = { version = "2.0.55", features = ["full", "printing"] }
 itertools = { workspace = true }
 prettyplease = "0.2.15"
 macro_railroad_annotation = { workspace = true }
